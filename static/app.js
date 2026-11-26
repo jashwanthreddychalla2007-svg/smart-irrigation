@@ -1625,6 +1625,16 @@ const weatherForecast24Display = document.getElementById("weatherForecast24Displ
 const weatherSoilTempDisplay = document.getElementById("weatherSoilTempDisplay");
 const weatherSyncTime = document.getElementById("weatherSyncTime");
 const btnRefreshWeather = document.getElementById("btnRefreshWeather");
+const btnTrackLiveGps = document.getElementById("btnTrackLiveGps");
+const btnTrackLiveGpsText = document.getElementById("btnTrackLiveGpsText");
+const weatherGpsBadge = document.getElementById("weatherGpsBadge");
+const weatherGpsDot = document.getElementById("weatherGpsDot");
+const weatherGpsText = document.getElementById("weatherGpsText");
+const weatherWindDisplay = document.getElementById("weatherWindDisplay");
+const weatherEt0Display = document.getElementById("weatherEt0Display");
+const weatherRain7dDisplay = document.getElementById("weatherRain7dDisplay");
+const weatherRainRiskBadge = document.getElementById("weatherRainRiskBadge");
+const weatherSoilMoistDisplay = document.getElementById("weatherSoilMoistDisplay");
 
 // Land Stats & Allocation Bar
 const landStatTotal = document.getElementById("landStatTotal");
@@ -2115,8 +2125,10 @@ async function predictActiveSection() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 soil_moisture: document.getElementById("soil_moisture") ? parseFloat(document.getElementById("soil_moisture").value) : sec.soil_moisture,
+                soil_temp: window.liveWeather ? (window.liveWeather.soil_temperature ?? sec.soil_temp) : sec.soil_temp,
                 air_temp: window.liveWeather ? window.liveWeather.current_temp : sec.air_temp,
                 humidity: window.liveWeather ? window.liveWeather.current_humidity : sec.humidity,
+                rainfall_7d: window.liveWeather ? (window.liveWeather.rainfall_last_7_days ?? sec.rainfall_7d) : sec.rainfall_7d,
                 forecast_24h: window.liveWeather ? window.liveWeather.forecast_rainfall_24h : 0.0
             })
         });
@@ -2179,39 +2191,162 @@ if (btnGenerateSectionSchedule) {
 }
 
 // ----------------------------------------------------
-// 4. Live Weather Integration (Open-Meteo)
+// 4. Real-Time Agrometeorology & Live GPS Tracking
 // ----------------------------------------------------
-async function fetchLiveFarmWeather(lat, lon) {
+window.liveGpsCoords = null;
+window.isTrackingLiveGps = false;
+window.gpsWatchId = null;
+
+async function fetchLiveFarmWeather(lat, lon, forceRefresh = false, locationLabel = null) {
     try {
-        const res = await fetch(`/api/weather/live?lat=${lat}&lon=${lon}`);
+        const refreshQuery = forceRefresh ? "&refresh=1" : "";
+        const res = await fetch(`/api/weather/live?lat=${lat}&lon=${lon}${refreshQuery}`);
         if (!res.ok) return;
         const w = await res.json();
         window.liveWeather = w;
 
+        // Headline Metrics
         if (weatherTempDisplay) weatherTempDisplay.textContent = `${w.current_temp.toFixed(1)} °C`;
-        if (weatherConditionDisplay) weatherConditionDisplay.textContent = w.current_weather;
+        if (weatherConditionDisplay) weatherConditionDisplay.textContent = `${w.current_weather_icon || '🌤️'} ${w.current_weather}`;
         if (weatherHumidityDisplay) weatherHumidityDisplay.textContent = `${Math.round(w.current_humidity)}%`;
         if (weatherRainDisplay) weatherRainDisplay.textContent = `${w.current_rainfall.toFixed(1)} mm`;
         if (weatherForecast24Display) weatherForecast24Display.textContent = `${w.forecast_rainfall_24h.toFixed(1)} mm`;
-        if (weatherSoilTempDisplay) weatherSoilTempDisplay.textContent = `${(w.current_temp - 2).toFixed(1)} °C`;
+
+        // Real Measured Soil Temperature (0-6 cm) & Moisture
+        const realSoilTemp = w.soil_temperature !== undefined ? w.soil_temperature : (w.current_temp - 1.5);
+        if (weatherSoilTempDisplay) weatherSoilTempDisplay.textContent = `${realSoilTemp.toFixed(1)} °C`;
+        if (weatherSoilMoistDisplay) {
+            const moistPct = w.soil_moisture !== undefined ? w.soil_moisture.toFixed(1) : "25.0";
+            weatherSoilMoistDisplay.textContent = `Soil Moisture: ${moistPct}%`;
+        }
+
+        // Companion Agricultural Indicators
+        if (weatherWindDisplay && w.wind_speed !== undefined) {
+            weatherWindDisplay.textContent = `Wind: ${w.wind_speed.toFixed(1)} km/h`;
+        }
+        if (weatherEt0Display && w.et0_evapotranspiration !== undefined) {
+            weatherEt0Display.textContent = `ET₀: ${w.et0_evapotranspiration.toFixed(1)} mm/day`;
+        }
+        if (weatherRain7dDisplay && w.rainfall_last_7_days !== undefined) {
+            weatherRain7dDisplay.textContent = `Past 7D: ${w.rainfall_last_7_days.toFixed(1)} mm`;
+        }
+        if (weatherRainRiskBadge) {
+            if (w.forecast_rainfall_24h >= 10.0) {
+                weatherRainRiskBadge.textContent = "⚠️ Heavy Rain Alert — Hold Irrigation";
+                weatherRainRiskBadge.style.color = "#dc2626";
+            } else if (w.forecast_rainfall_24h >= 2.5) {
+                weatherRainRiskBadge.textContent = "🌧️ Light Rain Predicted — Delay Cycle";
+                weatherRainRiskBadge.style.color = "#2563eb";
+            } else {
+                weatherRainRiskBadge.textContent = "☀️ Clear Soil Dry Window";
+                weatherRainRiskBadge.style.color = "#059669";
+            }
+        }
+
+        // Big Header Icon
+        const bigWeatherIcon = document.getElementById("weatherIcon");
+        if (bigWeatherIcon && w.current_weather_icon) {
+            bigWeatherIcon.textContent = w.current_weather_icon;
+        }
+
+        // Update Location Label
+        if (locationLabel && weatherLocationTag) {
+            weatherLocationTag.textContent = locationLabel;
+        }
 
         const now = new Date();
-        if (weatherSyncTime) weatherSyncTime.textContent = `Updated ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+        if (weatherSyncTime) {
+            weatherSyncTime.textContent = `Updated ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+        }
 
-        // Sync with hero banners
+        // Sync with hero banners if present
         const heroTemp = document.getElementById("heroTemperature");
         const heroHum = document.getElementById("heroHumidity");
         if (heroTemp) heroTemp.textContent = `${w.current_temp.toFixed(1)} °C`;
         if (heroHum) heroHum.textContent = `${Math.round(w.current_humidity)}%`;
     } catch (e) {
-        console.warn("Weather fetch failed:", e);
+        console.warn("Agromet live weather fetch failed:", e);
     }
+}
+
+// Browser Live GPS Tracking Engine
+function startLiveGpsTracking() {
+    if (!navigator.geolocation) {
+        alert("Geolocation is not supported by your current browser.");
+        return;
+    }
+
+    if (btnTrackLiveGpsText) btnTrackLiveGpsText.textContent = "Acquiring GPS...";
+    if (weatherGpsText) weatherGpsText.textContent = "Locking GPS Coordinates...";
+    if (weatherGpsDot) weatherGpsDot.style.background = "#eab308"; // Yellow pulse
+
+    navigator.geolocation.getCurrentPosition(
+        async (position) => {
+            const { latitude, longitude, accuracy } = position.coords;
+            window.liveGpsCoords = { lat: latitude, lon: longitude, accuracy };
+            window.isTrackingLiveGps = true;
+
+            if (weatherGpsBadge) {
+                weatherGpsBadge.style.background = "#eff6ff";
+                weatherGpsBadge.style.color = "#1d4ed8";
+                weatherGpsBadge.style.borderColor = "#93c5fd";
+            }
+            if (weatherGpsDot) weatherGpsDot.style.background = "#2563eb";
+            if (weatherGpsText) {
+                weatherGpsText.textContent = `Live GPS: ${latitude.toFixed(4)}°N, ${longitude.toFixed(4)}°E (±${Math.round(accuracy)}m)`;
+            }
+            if (btnTrackLiveGpsText) btnTrackLiveGpsText.textContent = "📍 Live GPS Active";
+
+            // Reverse geocode to exact locality name
+            let locText = `GPS: ${latitude.toFixed(4)}° N, ${longitude.toFixed(4)}° E (±${Math.round(accuracy)}m)`;
+            try {
+                const geoRes = await fetch(`/api/location/reverse?lat=${latitude}&lon=${longitude}`);
+                if (geoRes.ok) {
+                    const geo = await geoRes.json();
+                    const place = [geo.village, geo.district, geo.state].filter(Boolean).join(", ");
+                    if (place) locText = `📍 ${place} (${latitude.toFixed(4)}°, ${longitude.toFixed(4)}°) • ±${Math.round(accuracy)}m`;
+                }
+            } catch (err) {
+                console.debug("Reverse geocode failed:", err);
+            }
+
+            // Fetch live agrometeorological data with forced refresh
+            await fetchLiveFarmWeather(latitude, longitude, true, locText);
+        },
+        (error) => {
+            console.warn("GPS tracking error:", error);
+            if (btnTrackLiveGpsText) btnTrackLiveGpsText.textContent = "Track Live GPS";
+            if (weatherGpsDot) weatherGpsDot.style.background = "#94a3b8";
+            if (weatherGpsText) weatherGpsText.textContent = "Farm GPS Default";
+            let msg = "Could not acquire live GPS location. Using registered farm coordinates.";
+            if (error.code === error.PERMISSION_DENIED) {
+                msg = "Location access was denied in browser permissions. Using farm coordinates.";
+            }
+            if (weatherLocationTag) weatherLocationTag.textContent = msg;
+        },
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 15000 }
+    );
+}
+
+if (btnTrackLiveGps) {
+    btnTrackLiveGps.addEventListener("click", () => {
+        startLiveGpsTracking();
+    });
 }
 
 if (btnRefreshWeather) {
     btnRefreshWeather.addEventListener("click", () => {
-        if (window.currentFarmer) {
-            fetchLiveFarmWeather(window.currentFarmer.latitude || 30.9010, window.currentFarmer.longitude || 75.8573);
+        if (btnRefreshWeather) {
+            btnRefreshWeather.classList.add("spinning");
+            setTimeout(() => btnRefreshWeather.classList.remove("spinning"), 800);
+        }
+
+        if (window.isTrackingLiveGps && window.liveGpsCoords) {
+            fetchLiveFarmWeather(window.liveGpsCoords.lat, window.liveGpsCoords.lon, true);
+        } else if (window.currentFarmer) {
+            fetchLiveFarmWeather(window.currentFarmer.latitude || 30.9010, window.currentFarmer.longitude || 75.8573, true);
+        } else {
+            fetchLiveFarmWeather(30.9010, 75.8573, true);
         }
     });
 }

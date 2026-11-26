@@ -202,63 +202,89 @@
             </div>
         </section>
 
-        <!-- SECTION 2: Live Weather (5 compact metric cards of consistent height) -->
+        <!-- SECTION 2: Live Weather & Agromet Forecast (5 High-Precision Cards) -->
         <section id="sectionWeather" class="dashboard-section live-weather-card" aria-label="Live Weather & Atmospheric Conditions">
             <div class="weather-top-row">
                 <div class="weather-current-group">
                     <span class="weather-big-icon" id="weatherIcon">🌤️</span>
                     <div>
-                        <strong style="font-size: 16px; color: #0f172a;">Live Field Weather</strong>
+                        <strong style="font-size: 16px; color: #0f172a;">Live Field Weather & Agromet Feed</strong>
                         <small class="weather-loc-tag" id="weatherLocationTag" style="display:block;">GPS Farm Coordinates</small>
                     </div>
                 </div>
 
-                <div class="weather-meta-group">
-                    <span class="weather-source-badge" id="weatherSourceBadge">Open-Meteo API (Live)</span>
+                <div class="weather-meta-group" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <span class="weather-gps-badge" id="weatherGpsBadge" title="Live Device Location Status" style="display:inline-flex; align-items:center; gap:5px; padding:5px 9px; border-radius:12px; font-size:11px; font-weight:600; background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0;">
+                        <span class="gps-dot" id="weatherGpsDot" style="display:inline-block; width:7px; height:7px; border-radius:50%; background:#22c55e;"></span>
+                        <span id="weatherGpsText">Farm GPS Saved</span>
+                    </span>
+                    <button type="button" id="btnTrackLiveGps" class="btn-refresh-weather" title="Acquire live GPS location from browser" style="background:#eff6ff; border-color:#bfdbfe; color:#1d4ed8; font-weight:600;">
+                        <span aria-hidden="true">📍</span>
+                        <span id="btnTrackLiveGpsText">Track Live GPS</span>
+                    </button>
+                    <span class="weather-source-badge" id="weatherSourceBadge">Open-Meteo Agromet (Live)</span>
                     <span class="weather-sync-time" id="weatherSyncTime">Updated recently</span>
-                    <button type="button" id="btnRefreshWeather" class="btn-refresh-weather" title="Sync Live Open-Meteo Weather">
+                    <button type="button" id="btnRefreshWeather" class="btn-refresh-weather" title="Force Sync Live Open-Meteo Weather">
                         <span aria-hidden="true">🔄</span>
                         <span>Sync Live</span>
                     </button>
                 </div>
             </div>
 
-            <!-- 5 Compact Metric Cards of Consistent Height -->
+            <!-- 5 Compact Real-Time Agrometeorological Cards -->
             <div class="weather-grid-5">
-                <div class="weather-metric-card">
+                <!-- Card 1: Air Temperature & Wind -->
+                <div class="weather-metric-card" title="Real-time ambient temperature and surface wind speed">
                     <span class="weather-card-icon">🌡️</span>
                     <div class="weather-card-body">
                         <small>Air Temperature</small>
                         <strong id="weatherTempDisplay">-- °C</strong>
                         <span class="weather-condition-text" id="weatherConditionDisplay" style="display:block; font-size:11px; color:#64748b; font-weight:500;">Live Sensor</span>
+                        <span id="weatherWindDisplay" style="display:block; font-size:10.5px; color:#0369a1; margin-top:2px; font-weight:600;">Wind: -- km/h</span>
                     </div>
                 </div>
-                <div class="weather-metric-card">
+
+                <!-- Card 2: Relative Humidity & Evapotranspiration -->
+                <div class="weather-metric-card" title="Ambient humidity and daily FAO-56 reference evapotranspiration">
                     <span class="weather-card-icon">💧</span>
                     <div class="weather-card-body">
                         <small>Relative Humidity</small>
                         <strong id="weatherHumidityDisplay">--%</strong>
+                        <span class="weather-condition-text" style="display:block; font-size:11px; color:#64748b; font-weight:500;">Atmospheric moisture</span>
+                        <span id="weatherEt0Display" style="display:block; font-size:10.5px; color:#0d9488; margin-top:2px; font-weight:600;">ET₀: -- mm/day</span>
                     </div>
                 </div>
-                <div class="weather-metric-card">
+
+                <!-- Card 3: Current Rain & Past 7-Day Cumulative Rain -->
+                <div class="weather-metric-card" title="Current precipitation and cumulative rainfall over the past 7 days">
                     <span class="weather-card-icon">🌧️</span>
                     <div class="weather-card-body">
                         <small>Current Rainfall</small>
                         <strong id="weatherRainDisplay">0.0 mm</strong>
+                        <span class="weather-condition-text" style="display:block; font-size:11px; color:#64748b; font-weight:500;">Live precipitation</span>
+                        <span id="weatherRain7dDisplay" style="display:block; font-size:10.5px; color:#2563eb; margin-top:2px; font-weight:600;">Past 7D: -- mm</span>
                     </div>
                 </div>
-                <div class="weather-metric-card">
+
+                <!-- Card 4: 24-Hour Rain Forecast -->
+                <div class="weather-metric-card" title="Integrated next 24-hour rainfall forecast from weather models">
                     <span class="weather-card-icon">⏱️</span>
                     <div class="weather-card-body">
                         <small>24h Rain Forecast</small>
                         <strong id="weatherForecast24Display">0.0 mm</strong>
+                        <span class="weather-condition-text" style="display:block; font-size:11px; color:#64748b; font-weight:500;">Precipitation sum</span>
+                        <span id="weatherRainRiskBadge" style="display:block; font-size:10.5px; color:#059669; margin-top:2px; font-weight:600;">Optimal dry window</span>
                     </div>
                 </div>
-                <div class="weather-metric-card">
+
+                <!-- Card 5: Real Root-Zone Soil Temperature & Moisture (Satellite/Sensor, not estimated!) -->
+                <div class="weather-metric-card" title="Measured surface/root-zone soil temperature and volumetric soil moisture">
                     <span class="weather-card-icon">🪴</span>
                     <div class="weather-card-body">
-                        <small>Soil Temp (Est.)</small>
+                        <small>Soil Temp (0-6 cm)</small>
                         <strong id="weatherSoilTempDisplay">-- °C</strong>
+                        <span class="weather-condition-text" style="display:block; font-size:11px; color:#15803d; font-weight:600;">Real Satellite Sensor</span>
+                        <span id="weatherSoilMoistDisplay" style="display:block; font-size:10.5px; color:#b45309; margin-top:2px; font-weight:600;">Soil Moisture: --%</span>
                     </div>
                 </div>
             </div>

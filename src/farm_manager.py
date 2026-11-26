@@ -880,16 +880,30 @@ def predict_section_irrigation(
     farm = get_farm_by_id(sec["farm_id"], farmer_id)
     state = farm["state"] if farm else "Punjab"
 
-    # Merge section parameters with any user-provided live overrides
+    # Merge section parameters with any user-provided live overrides or farm live weather
+    live_w = None
+    if farm and (farm.get("latitude") or farm.get("longitude")):
+        try:
+            from src.weather_service import get_live_weather
+            live_w = get_live_weather(float(farm.get("latitude", 30.9010)), float(farm.get("longitude", 75.8573)))
+        except Exception:
+            pass
+
+    def_soil_temp = live_w.get("soil_temperature", sec["soil_temp"]) if live_w else sec["soil_temp"]
+    def_air_temp = live_w.get("current_temp", sec["air_temp"]) if live_w else sec["air_temp"]
+    def_humidity = live_w.get("current_humidity", sec["humidity"]) if live_w else sec["humidity"]
+    def_rainfall_7d = live_w.get("rainfall_last_7_days", sec["rainfall_7d"]) if live_w else sec["rainfall_7d"]
+    def_forecast_24h = live_w.get("forecast_rainfall_24h", sec["forecast_24h"]) if live_w else sec["forecast_24h"]
+
     moisture = float(override_data.get("soil_moisture") if override_data and "soil_moisture" in override_data else sec["soil_moisture"])
     if sec.get("crop") and sec["crop"].lower() in ("rice", "paddy"):
         if moisture < -25.0 or moisture > 5.0:
             moisture = -10.0
-    soil_temp = float(override_data.get("soil_temp") if override_data and "soil_temp" in override_data else sec["soil_temp"])
-    air_temp = float(override_data.get("air_temp") if override_data and "air_temp" in override_data else sec["air_temp"])
-    humidity = float(override_data.get("humidity") if override_data and "humidity" in override_data else sec["humidity"])
-    rainfall_7d = float(override_data.get("rainfall_7d") if override_data and "rainfall_7d" in override_data else sec["rainfall_7d"])
-    forecast_24h = float(override_data.get("forecast_24h") if override_data and "forecast_24h" in override_data else sec["forecast_24h"])
+    soil_temp = float(override_data.get("soil_temp") if override_data and "soil_temp" in override_data else def_soil_temp)
+    air_temp = float(override_data.get("air_temp") if override_data and "air_temp" in override_data else def_air_temp)
+    humidity = float(override_data.get("humidity") if override_data and "humidity" in override_data else def_humidity)
+    rainfall_7d = float(override_data.get("rainfall_7d") if override_data and "rainfall_7d" in override_data else def_rainfall_7d)
+    forecast_24h = float(override_data.get("forecast_24h") if override_data and "forecast_24h" in override_data else def_forecast_24h)
 
     from src.irrigation_service import IrrigationService
     service = IrrigationService.get_instance()
@@ -970,6 +984,15 @@ def schedule_section_irrigation(
             base_dt = datetime.strptime(start_date, "%Y-%m-%d")
         except Exception:
             base_dt = datetime.now()
+
+    # If forecast not passed, lookup live forecast from farm coordinates
+    if forecast_24h <= 0.0 and farm and (farm.get("latitude") or farm.get("longitude")):
+        try:
+            from src.weather_service import get_live_weather
+            lw = get_live_weather(float(farm.get("latitude", 30.9010)), float(farm.get("longitude", 75.8573)))
+            forecast_24h = float(lw.get("forecast_rainfall_24h", 0.0))
+        except Exception:
+            pass
 
     # Determine spaced sessions within the planning period
     rain_delay = 2 if forecast_24h >= 5.0 else 0

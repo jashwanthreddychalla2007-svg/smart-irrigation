@@ -4059,6 +4059,16 @@ body.auth-page .lang-selector-compact {
     color: #1d4ed8;
 }
 
+.btn-refresh-weather.spinning span[aria-hidden="true"] {
+    display: inline-block;
+    animation: agrometSpin 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes agrometSpin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
 .weather-metrics-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));

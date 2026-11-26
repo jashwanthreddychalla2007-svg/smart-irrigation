@@ -1236,7 +1236,8 @@ def weather_live():
     except (ValueError, TypeError):
         return jsonify({"error": "Invalid coordinates."}), 400
 
-    w = get_live_weather(lat, lon)
+    force_refresh = request.args.get("refresh", "").lower() in ("1", "true")
+    w = get_live_weather(lat, lon, force_refresh=force_refresh)
     return jsonify(w), 200
 
 
