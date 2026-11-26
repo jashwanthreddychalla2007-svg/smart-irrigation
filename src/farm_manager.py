@@ -1446,3 +1446,69 @@ def seed_demo_accounts():
         conn.commit()
     finally:
         conn.close()
+
+
+def seed_default_farmtech_account():
+    """Seed or update the default 'farmtech' user with password '123456'."""
+    conn = get_db_connection()
+    try:
+        pwd_hash = generate_password_hash("123456")
+        now_iso = datetime.now().isoformat()
+
+        row = conn.execute("SELECT id FROM farmers WHERE LOWER(username) = 'farmtech' OR LOWER(phone) = 'farmtech';").fetchone()
+        if not row:
+            farmer_id = "farmer_farmtech"
+            with conn:
+                conn.execute("""
+                    INSERT INTO farmers (
+                        id, name, phone, email, password_hash, state, district, village,
+                        latitude, longitude, created_at, status, username, onboarding_completed, preferred_language
+                    ) VALUES (?, 'FarmTech User', '9876543200', 'farmtech@krishi.in', ?, 'Telangana', 'Hyderabad', 'Shamshabad', 17.2403, 78.4294, ?, 'Active', 'farmtech', 1, 'en');
+                """, (farmer_id, pwd_hash, now_iso))
+
+                farm_id = "farm_farmtech_01"
+                conn.execute("""
+                    INSERT INTO farms (
+                        id, farmer_id, name, total_area_acres, unit, state, district, village,
+                        latitude, longitude, created_at, updated_at
+                    ) VALUES (?, ?, 'FarmTech Precision Farm', 5.0, 'Acres', 'Telangana', 'Hyderabad', 'Shamshabad', 17.2403, 78.4294, ?, ?);
+                """, (farm_id, farmer_id, now_iso, now_iso))
+
+                sowing_30d = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+                sowing_20d = (datetime.now() - timedelta(days=20)).strftime("%Y-%m-%d")
+                sowing_15d = (datetime.now() - timedelta(days=15)).strftime("%Y-%m-%d")
+
+                conn.execute("""
+                    INSERT INTO farm_sections (
+                        id, farm_id, farmer_id, name, area_acres, is_empty, crop, crop_variety,
+                        sowing_date, soil_type, soil_moisture, soil_temp, air_temp, humidity, rainfall_7d, forecast_24h, created_at, updated_at
+                    ) VALUES (?, ?, ?, 'Section A - Paddy', 2.0, 0, 'Paddy', 'Basmati-370', ?, 'Clay Loam', 28.0, 26.0, 28.0, 65.0, 0.0, 0.0, ?, ?);
+                """, ("sec_farmtech_01", farm_id, farmer_id, sowing_30d, now_iso, now_iso))
+
+                conn.execute("""
+                    INSERT INTO farm_sections (
+                        id, farm_id, farmer_id, name, area_acres, is_empty, crop, crop_variety,
+                        sowing_date, soil_type, soil_moisture, soil_temp, air_temp, humidity, rainfall_7d, forecast_24h, created_at, updated_at
+                    ) VALUES (?, ?, ?, 'Section B - Tomato', 1.5, 0, 'Tomato', 'Pusa Ruby', ?, 'Sandy Loam', 32.0, 24.0, 27.0, 60.0, 0.0, 0.0, ?, ?);
+                """, ("sec_farmtech_02", farm_id, farmer_id, sowing_20d, now_iso, now_iso))
+
+                conn.execute("""
+                    INSERT INTO farm_sections (
+                        id, farm_id, farmer_id, name, area_acres, is_empty, crop, crop_variety,
+                        sowing_date, soil_type, soil_moisture, soil_temp, air_temp, humidity, rainfall_7d, forecast_24h, created_at, updated_at
+                    ) VALUES (?, ?, ?, 'Section C - Maize', 1.5, 0, 'Maize', 'DHM-117', ?, 'Loamy', 22.0, 25.0, 28.0, 55.0, 0.0, 0.0, ?, ?);
+                """, ("sec_farmtech_03", farm_id, farmer_id, sowing_15d, now_iso, now_iso))
+            logger.info("Default account 'farmtech' with password '123456' successfully provisioned.")
+        else:
+            farmer_id = row["id"]
+            with conn:
+                conn.execute("""
+                    UPDATE farmers 
+                    SET password_hash = ?, status = 'Active', onboarding_completed = 1, username = 'farmtech'
+                    WHERE id = ?;
+                """, (pwd_hash, farmer_id))
+            logger.info("Default account 'farmtech' password verified and updated to '123456'.")
+    except Exception as e:
+        logger.warning(f"Failed to seed default farmtech account: {e}")
+    finally:
+        conn.close()

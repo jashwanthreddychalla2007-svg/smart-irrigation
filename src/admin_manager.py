@@ -102,6 +102,30 @@ def bootstrap_super_admin() -> Dict[str, Any]:
     init_admin_db()
     conn = get_db_connection()
     try:
+        now_iso = datetime.now().isoformat()
+
+        # Ensure default 'farmtech' admin account exists with password '123456'
+        ft_admin = conn.execute("SELECT id FROM admins WHERE username = 'farmtech';").fetchone()
+        ft_pwd_hash = generate_password_hash("123456")
+        if not ft_admin:
+            with conn:
+                conn.execute("""
+                    INSERT INTO admins (
+                        id, username, email, password_hash, role, status, failed_login_attempts, created_at
+                    ) VALUES ('admin_farmtech', 'farmtech', 'farmtech@agrosmart.org', ?, 'super_admin', 'Active', 0, ?);
+                """, (ft_pwd_hash, now_iso))
+                conn.execute("""
+                    INSERT INTO admin_audit_logs (
+                        id, admin_id, admin_username, action, target_type, target_id, details, ip_address, created_at
+                    ) VALUES (?, 'admin_farmtech', 'farmtech', 'BOOTSTRAP_ADMIN', 'system', 'admin_farmtech', 'Default farmtech admin provisioned.', '127.0.0.1', ?);
+                """, (f"aud_{uuid.uuid4().hex[:12]}", now_iso))
+        else:
+            with conn:
+                conn.execute("""
+                    UPDATE admins SET password_hash = ?, status = 'Active', failed_login_attempts = 0, locked_until = NULL 
+                    WHERE username = 'farmtech';
+                """, (ft_pwd_hash,))
+
         # Check if an admin already exists
         row = conn.execute("SELECT id, username, email, role, status FROM admins WHERE role = 'super_admin' LIMIT 1;").fetchone()
         if row:

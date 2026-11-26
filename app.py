@@ -39,6 +39,7 @@ from src.irrigation_scheduler import (
 from src.farm_manager import (
     init_farm_db,
     seed_demo_accounts,
+    seed_default_farmtech_account,
     register_farmer,
     authenticate_farmer,
     get_farmer_by_id,
@@ -125,6 +126,7 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", "agrisaathi-farmer-smart-irrigati
 irrigation_service = IrrigationService.get_instance()
 init_scheduler_db()
 init_farm_db()
+seed_default_farmtech_account()
 if os.getenv("SEED_DEMO_ACCOUNTS", "").lower() in ("1", "true"):
     seed_demo_accounts()
 init_admin_db()

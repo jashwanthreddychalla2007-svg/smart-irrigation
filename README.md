@@ -66,6 +66,14 @@ India-Smart-Irrigation/
    pytest
    ```
 
+## Default Login Credentials
+
+For quick evaluation and demonstrations, the application includes a ready-to-use default account:
+- **Username:** `farmtech`
+- **Password:** `123456`
+- **Farmer Portal (`/login`):** Pre-configured with *FarmTech Precision Farm* (5.0 Acres, Hyderabad, Telangana) and 3 active crop plots (Paddy, Tomato, Maize).
+- **Super Admin Portal (`/admin/login`):** Also granted Central Authority access for administrative testing.
+
 ## Deploying to Render
 
 This repository is pre-configured for **Render** via `render.yaml` and `Procfile`.
