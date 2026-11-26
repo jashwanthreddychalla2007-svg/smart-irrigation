@@ -1729,8 +1729,6 @@ def admin_required(f):
                 return jsonify({"error": "Administrative authentication required.", "authenticated": False}), 401
             
             # Browser page routes (e.g. /admin)
-            if session.get("farmer_id"):
-                return redirect("/admin/login?error=forbidden"), 302
             return redirect("/admin/login"), 302
         return f(*args, **kwargs)
     return decorated_function

@@ -56,6 +56,12 @@
                     </div>
                 </div>
 
+                <div style="margin: 10px 0 16px 0; display: flex; justify-content: flex-end;">
+                    <button type="button" id="btnAdminAutofill" style="background: rgba(59, 130, 246, 0.08); border: 1px dashed #3b82f6; border-radius: 6px; padding: 5px 12px; font-size: 12px; font-weight: 600; color: #1d4ed8; cursor: pointer;">
+                        ✨ Auto Fill (farmtech / 123456)
+                    </button>
+                </div>
+
                 <!-- Error & Feedback Notice -->
                 <div id="adminLoginFeedback" class="admin-feedback-box" style="display: none;" role="alert"></div>
 
@@ -82,6 +88,15 @@
         const adminLoginFeedback = document.getElementById("adminLoginFeedback");
         const btnAdminLogin = document.getElementById("btnAdminLogin");
         const adminLoginBtnText = document.getElementById("adminLoginBtnText");
+        const btnAdminAutofill = document.getElementById("btnAdminAutofill");
+
+        if (btnAdminAutofill) {
+            btnAdminAutofill.addEventListener("click", () => {
+                document.getElementById("adminUsername").value = "farmtech";
+                document.getElementById("adminPassword").value = "123456";
+                adminLoginFeedback.style.display = "none";
+            });
+        }
 
         adminLoginForm.addEventListener("submit", async (e) => {
             e.preventDefault();

@@ -1216,6 +1216,10 @@
             if (el.monAccountsBadge) el.monAccountsBadge.textContent = `${s.total_farmers || 0} Accounts`;
             if (el.navActivityCount) el.navActivityCount.textContent = s.total_activities || 0;
 
+            if (!allFarmers || allFarmers.length === 0) {
+                const fRes = await fetch("/api/admin/farmers");
+                if (fRes.ok) allFarmers = await fRes.json();
+            }
             renderAccountsUsageTable(allFarmers, s.top_users || []);
         } catch (err) {
             console.error("Failed to load accounts summary:", err);

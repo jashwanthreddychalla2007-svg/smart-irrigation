@@ -352,12 +352,10 @@ def get_admin_dashboard_kpis() -> Dict[str, Any]:
     init_admin_db()
     conn = get_db_connection()
     try:
-        # Genuine registered farmers filter (must have non-empty username & password, not in admins)
+        # Genuine registered farmers filter (must have non-empty username & password)
         registered_farmer_filter = """
             f.username IS NOT NULL AND TRIM(f.username) != ''
             AND f.password_hash IS NOT NULL AND TRIM(f.password_hash) != ''
-            AND LOWER(TRIM(f.username)) NOT IN (SELECT LOWER(TRIM(username)) FROM admins WHERE username IS NOT NULL)
-            AND f.id NOT IN (SELECT id FROM admins)
         """
 
         # Farmer counts
@@ -486,8 +484,6 @@ def get_all_farmers_admin(
             LEFT JOIN farm_sections fs ON f.id = fs.farmer_id
             WHERE f.username IS NOT NULL AND TRIM(f.username) != ''
               AND f.password_hash IS NOT NULL AND TRIM(f.password_hash) != ''
-              AND LOWER(TRIM(f.username)) NOT IN (SELECT LOWER(TRIM(username)) FROM admins WHERE username IS NOT NULL)
-              AND f.id NOT IN (SELECT id FROM admins)
         """
         params = []
 
