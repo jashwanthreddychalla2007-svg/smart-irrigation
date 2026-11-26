@@ -90,6 +90,31 @@
         auditActionFilter: document.getElementById("auditActionFilter"),
         auditLogsTableBody: document.getElementById("auditLogsTableBody"),
 
+        // Accounts & Activity Monitor
+        navActivityCount: document.getElementById("navActivityCount"),
+        btnRefreshAccountsActivity: document.getElementById("btnRefreshAccountsActivity"),
+        monActivityTypeFilter: document.getElementById("monActivityTypeFilter"),
+        monAccountsTableBody: document.getElementById("monAccountsTableBody"),
+        monActivityStreamList: document.getElementById("monActivityStreamList"),
+        monTotalUsers: document.getElementById("monTotalUsers"),
+        monActiveUsers: document.getElementById("monActiveUsers"),
+        monSuspendedUsers: document.getElementById("monSuspendedUsers"),
+        monActiveUsers7d: document.getElementById("monActiveUsers7d"),
+        monActivities24h: document.getElementById("monActivities24h"),
+        monTotalActivities: document.getElementById("monTotalActivities"),
+        monTotalWater: document.getElementById("monTotalWater"),
+        monCultivatedPlots: document.getElementById("monCultivatedPlots"),
+        monAccountsBadge: document.getElementById("monAccountsBadge"),
+
+        // User Timeline Modal
+        userTimelineModal: document.getElementById("userTimelineModal"),
+        userTimelineModalBackdrop: document.getElementById("userTimelineModalBackdrop"),
+        userTimelineModalCloseBtn: document.getElementById("userTimelineModalCloseBtn"),
+        userTimelineModalDoneBtn: document.getElementById("userTimelineModalDoneBtn"),
+        userTimelineModalTitle: document.getElementById("userTimelineModalTitle"),
+        userTimelineFarmerSubtitle: document.getElementById("userTimelineFarmerSubtitle"),
+        userTimelineModalBody: document.getElementById("userTimelineModalBody"),
+
         // Inspect Modal
         farmerInspectModal: document.getElementById("farmerInspectModal"),
         inspectModalTitle: document.getElementById("inspectModalTitle"),
@@ -205,6 +230,7 @@
         else if (tabName === "weather") loadWeather();
         else if (tabName === "ai-system") loadAIStatus();
         else if (tabName === "audit-logs") loadAuditLogs();
+        else if (tabName === "accounts-activity") loadAccountsActivity();
     }
 
     // ========================================================
@@ -1157,6 +1183,292 @@
 
     if (el.auditActionFilter) el.auditActionFilter.addEventListener("change", loadAuditLogs);
     if (el.btnRefreshAuditLogs) el.btnRefreshAuditLogs.addEventListener("click", loadAuditLogs);
+
+    // ========================================================
+    // TAB 7: Accounts & Activity Monitor
+    // ========================================================
+    async function loadAccountsActivity() {
+        try {
+            await Promise.all([
+                loadAccountsSummary(),
+                loadActivityStream()
+            ]);
+        } catch (err) {
+            console.error("Failed to load accounts activity:", err);
+        }
+    }
+
+    async function loadAccountsSummary() {
+        try {
+            const res = await fetch("/api/admin/accounts/summary");
+            if (!res.ok) return;
+            const data = await res.json();
+            const s = data.summary || {};
+
+            if (el.monTotalUsers) el.monTotalUsers.textContent = s.total_farmers || 0;
+            if (el.monActiveUsers) el.monActiveUsers.textContent = `${s.active_farmers || 0} Active`;
+            if (el.monSuspendedUsers) el.monSuspendedUsers.textContent = `${s.suspended_farmers || 0} Suspended`;
+            if (el.monActiveUsers7d) el.monActiveUsers7d.textContent = s.active_users_7d || 0;
+            if (el.monActivities24h) el.monActivities24h.textContent = `${s.activities_24h || 0} events in last 24h`;
+            if (el.monTotalActivities) el.monTotalActivities.textContent = s.total_activities || 0;
+            if (el.monTotalWater) el.monTotalWater.textContent = `${(s.total_water_liters || 0).toLocaleString()} L`;
+            if (el.monCultivatedPlots) el.monCultivatedPlots.textContent = `${s.total_cultivated_plots || 0} active plots`;
+            if (el.monAccountsBadge) el.monAccountsBadge.textContent = `${s.total_farmers || 0} Accounts`;
+            if (el.navActivityCount) el.navActivityCount.textContent = s.total_activities || 0;
+
+            renderAccountsUsageTable(allFarmers, s.top_users || []);
+        } catch (err) {
+            console.error("Failed to load accounts summary:", err);
+        }
+    }
+
+    function renderAccountsUsageTable(farmers, topUsers) {
+        if (!el.monAccountsTableBody) return;
+        el.monAccountsTableBody.innerHTML = "";
+
+        if (!farmers || farmers.length === 0) {
+            el.monAccountsTableBody.innerHTML = `<tr><td colspan="4" class="text-center">No farmer accounts created yet.</td></tr>`;
+            return;
+        }
+
+        const topUsersMap = {};
+        (topUsers || []).forEach(u => {
+            topUsersMap[u.user_id] = u;
+        });
+
+        farmers.forEach(f => {
+            const tr = document.createElement("tr");
+            const topInfo = topUsersMap[f.id];
+            const actCount = topInfo ? topInfo.activity_count : 0;
+            const statusClass = f.status === "Active" ? "tag-active" : "tag-suspended";
+
+            tr.innerHTML = `
+                <td>
+                    <strong>${escapeHtml(f.name)}</strong>
+                    <div style="font-size: 11.5px; color: #64748b;">@${escapeHtml(f.username || f.phone)}</div>
+                </td>
+                <td>${escapeHtml(f.district || "--")}, ${escapeHtml(f.state || "India")}</td>
+                <td><span class="${statusClass}">${escapeHtml(f.status || "Active")}</span></td>
+                <td>
+                    <button type="button" class="btn-action-timeline" data-user-id="${escapeHtml(f.id)}">
+                        <span>📜 View Timeline</span>
+                        <span class="meta-tag" style="margin-left: 4px;">${actCount}</span>
+                    </button>
+                </td>
+            `;
+
+            const btnTimeline = tr.querySelector(".btn-action-timeline");
+            if (btnTimeline) {
+                btnTimeline.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    openUserTimelineModal(f.id);
+                });
+            }
+
+            el.monAccountsTableBody.appendChild(tr);
+        });
+    }
+
+    async function loadActivityStream() {
+        if (!el.monActivityStreamList) return;
+        try {
+            const filterType = el.monActivityTypeFilter ? el.monActivityTypeFilter.value : "all";
+            const params = new URLSearchParams();
+            if (filterType && filterType !== "all") params.set("type", filterType);
+            params.set("limit", "100");
+
+            const res = await fetch(`/api/admin/accounts/activities?${params.toString()}`);
+            if (!res.ok) return;
+            const data = await res.json();
+            renderActivityStream(data.activities || []);
+        } catch (err) {
+            console.error("Failed to load activity stream:", err);
+        }
+    }
+
+    function renderActivityStream(activities) {
+        if (!el.monActivityStreamList) return;
+        el.monActivityStreamList.innerHTML = "";
+
+        if (!activities || activities.length === 0) {
+            el.monActivityStreamList.innerHTML = `
+                <div class="empty-state-wrap" style="padding: 24px 16px;">
+                    <span style="font-size: 28px;">📡</span>
+                    <h3 style="font-size: 14px; margin: 6px 0;">No User Activities Recorded</h3>
+                    <p style="font-size: 12px;">Events like logins, predictions, plot creations, and schedules will appear here in real-time.</p>
+                </div>
+            `;
+            return;
+        }
+
+        activities.forEach(a => {
+            const card = document.createElement("div");
+            card.className = "activity-card";
+
+            let detailsTags = "";
+            if (a.details && typeof a.details === "object") {
+                Object.entries(a.details).forEach(([k, v]) => {
+                    if (v !== null && v !== undefined && v !== "") {
+                        detailsTags += `<span class="meta-tag">${escapeHtml(k)}: ${escapeHtml(String(v))}</span>`;
+                    }
+                });
+            }
+
+            card.innerHTML = `
+                <div class="activity-icon-bubble">${escapeHtml(a.icon || "📌")}</div>
+                <div class="activity-content">
+                    <div class="activity-top-row">
+                        <span class="activity-user-badge">
+                            👤 ${escapeHtml(a.username)}
+                        </span>
+                        <span class="activity-time-text">${escapeHtml(formatRelativeTime(a.created_at))}</span>
+                    </div>
+                    <div class="activity-summary-text">${escapeHtml(a.action_summary)}</div>
+                    <div class="activity-meta-tags">
+                        <span class="meta-tag" style="background: #eff6ff; color: #1d4ed8; font-weight: 600;">${escapeHtml(a.activity_type)}</span>
+                        ${detailsTags}
+                        <span class="meta-tag">IP: ${escapeHtml(a.ip_address || "127.0.0.1")}</span>
+                    </div>
+                </div>
+            `;
+
+            card.style.cursor = "pointer";
+            card.addEventListener("click", () => {
+                openUserTimelineModal(a.user_id);
+            });
+
+            el.monActivityStreamList.appendChild(card);
+        });
+    }
+
+    function formatRelativeTime(dateStr) {
+        if (!dateStr) return "--";
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) return dateStr;
+        const now = new Date();
+        const diffSecs = Math.floor((now - date) / 1000);
+
+        if (diffSecs < 10) return "Just now";
+        if (diffSecs < 60) return `${diffSecs}s ago`;
+        const diffMins = Math.floor(diffSecs / 60);
+        if (diffMins < 60) return `${diffMins}m ago`;
+        const diffHours = Math.floor(diffMins / 60);
+        if (diffHours < 24) return `${diffHours}h ago`;
+        const diffDays = Math.floor(diffHours / 24);
+        if (diffDays < 7) return `${diffDays}d ago`;
+        return date.toLocaleDateString();
+    }
+
+    async function openUserTimelineModal(userId) {
+        if (!el.userTimelineModal) return;
+        el.userTimelineModalBody.innerHTML = `<div style="padding: 30px; text-align: center;"><span style="font-size: 24px;">⏳</span><p>Loading user activity timeline...</p></div>`;
+        el.userTimelineModal.style.display = "flex";
+
+        try {
+            const res = await fetch(`/api/admin/accounts/${userId}/timeline`);
+            if (!res.ok) {
+                el.userTimelineModalBody.innerHTML = `<div class="alert-box-warning">Failed to load user timeline.</div>`;
+                return;
+            }
+            const data = await res.json();
+            const farmer = data.farmer || {};
+            const stats = data.stats || {};
+            const timeline = data.timeline || [];
+
+            if (el.userTimelineModalTitle) {
+                el.userTimelineModalTitle.textContent = `${farmer.name || farmer.username} - Activity Timeline`;
+            }
+            if (el.userTimelineFarmerSubtitle) {
+                el.userTimelineFarmerSubtitle.textContent = `Farmer ID: ${farmer.id} • Registered: ${formatDateTime(farmer.created_at)}`;
+            }
+
+            let timelineItemsHtml = "";
+            if (timeline.length === 0) {
+                timelineItemsHtml = `<p style="color: #64748b; font-size: 13px; padding: 12px 0;">No activities logged for this user yet.</p>`;
+            } else {
+                timeline.forEach(item => {
+                    let detailsList = "";
+                    if (item.details && typeof item.details === "object") {
+                        const keys = Object.keys(item.details);
+                        if (keys.length > 0) {
+                            detailsList = `<div class="activity-meta-tags" style="margin-top: 6px;">` +
+                                keys.map(k => `<span class="meta-tag">${escapeHtml(k)}: ${escapeHtml(String(item.details[k]))}</span>`).join("") +
+                                `</div>`;
+                        }
+                    }
+
+                    timelineItemsHtml += `
+                        <div class="timeline-event-item">
+                            <div class="timeline-event-content">
+                                <div class="timeline-event-time">
+                                    <span>${escapeHtml(formatDateTime(item.created_at))}</span>
+                                    <span style="margin-left: 8px; color: #94a3b8;">(${escapeHtml(formatRelativeTime(item.created_at))})</span>
+                                </div>
+                                <div class="timeline-event-title">
+                                    ${escapeHtml(item.icon || "📌")} ${escapeHtml(item.action_summary)}
+                                </div>
+                                <div style="font-size: 11px; color: #64748b;">
+                                    <span>Type: <strong>${escapeHtml(item.activity_type)}</strong></span> • 
+                                    <span>Device: ${escapeHtml(item.user_agent || "Browser")}</span>
+                                </div>
+                                ${detailsList}
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+
+            el.userTimelineModalBody.innerHTML = `
+                <div class="timeline-profile-header">
+                    <div class="timeline-profile-avatar">${escapeHtml((farmer.name || "F")[0].toUpperCase())}</div>
+                    <div class="timeline-profile-info">
+                        <h4>${escapeHtml(farmer.name)} (@${escapeHtml(farmer.username || farmer.phone)})</h4>
+                        <p>📍 ${escapeHtml(farmer.district || "--")}, ${escapeHtml(farmer.state || "India")} • 📞 ${escapeHtml(farmer.phone || "--")} • ✉️ ${escapeHtml(farmer.email || "--")}</p>
+                    </div>
+                </div>
+
+                <div class="timeline-stats-row">
+                    <div class="timeline-stat-box">
+                        <div class="timeline-stat-label">Total Farms</div>
+                        <div class="timeline-stat-value">${stats.farms_count || 0}</div>
+                    </div>
+                    <div class="timeline-stat-box">
+                        <div class="timeline-stat-label">Active Plots</div>
+                        <div class="timeline-stat-value">${stats.sections_count || 0}</div>
+                    </div>
+                    <div class="timeline-stat-box">
+                        <div class="timeline-stat-label">Schedules Created</div>
+                        <div class="timeline-stat-value">${stats.schedules_count || 0}</div>
+                    </div>
+                    <div class="timeline-stat-box">
+                        <div class="timeline-stat-label">Activities Logged</div>
+                        <div class="timeline-stat-value" style="color: #2563eb;">${stats.total_activities || 0}</div>
+                    </div>
+                </div>
+
+                <h4 style="font-size: 14px; font-weight: 800; color: #0f172a; margin: 18px 0 12px 0;">
+                    📜 Chronological Step-by-Step History
+                </h4>
+                <div class="timeline-feed">
+                    ${timelineItemsHtml}
+                </div>
+            `;
+        } catch (err) {
+            console.error("Failed to render user timeline:", err);
+            el.userTimelineModalBody.innerHTML = `<div class="alert-box-warning">Error loading user timeline history.</div>`;
+        }
+    }
+
+    function closeUserTimelineModal() {
+        if (el.userTimelineModal) el.userTimelineModal.style.display = "none";
+    }
+
+    if (el.userTimelineModalCloseBtn) el.userTimelineModalCloseBtn.addEventListener("click", closeUserTimelineModal);
+    if (el.userTimelineModalDoneBtn) el.userTimelineModalDoneBtn.addEventListener("click", closeUserTimelineModal);
+    if (el.userTimelineModalBackdrop) el.userTimelineModalBackdrop.addEventListener("click", closeUserTimelineModal);
+
+    if (el.btnRefreshAccountsActivity) el.btnRefreshAccountsActivity.addEventListener("click", loadAccountsActivity);
+    if (el.monActivityTypeFilter) el.monActivityTypeFilter.addEventListener("change", loadActivityStream);
 
     // Initialize application on page load
     document.addEventListener("DOMContentLoaded", () => {

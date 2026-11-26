@@ -109,6 +109,11 @@
                     <span>Registered Farmers</span>
                     <span class="nav-badge" id="navFarmerCount">0</span>
                 </button>
+                <button type="button" class="admin-nav-item" data-tab="accounts-activity">
+                    <span class="nav-icon">👥</span>
+                    <span>Accounts & Activities</span>
+                    <span class="nav-badge" id="navActivityCount">0</span>
+                </button>
                 <button type="button" class="admin-nav-item" data-tab="farms">
                     <span class="nav-icon">🏡</span>
                     <span>Global Farms</span>
@@ -491,6 +496,132 @@
                     </div>
                 </div>
             </section>
+
+            <!-- TAB 7: ACCOUNTS & USER ACTIVITY MONITOR -->
+            <section id="view-accounts-activity" class="admin-tab-view">
+                <div class="view-header">
+                    <div>
+                        <h2>User Accounts & Real-Time Activity Monitor</h2>
+                        <p>Comprehensive monitoring of registered user accounts, active logins, platform usage, and operational events (Privacy-Preserving).</p>
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <span class="live-pulse-badge"><span class="pulse-dot"></span> Live Activity Feed</span>
+                        <button type="button" class="btn-refresh-data" id="btnRefreshAccountsActivity">
+                            <span aria-hidden="true">🔄</span>
+                            <span>Refresh Stream</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Privacy & Data Safeguard Notice Banner -->
+                <div class="privacy-notice-banner">
+                    <div class="privacy-notice-icon">🛡️</div>
+                    <div class="privacy-notice-text">
+                        <strong>Privacy Safeguards Active:</strong>
+                        <span>User passwords, authentication secrets, biometric passkeys, and private personal chat queries are strictly excluded from monitoring logs. Only high-level usage, telemetry, and agronomic events are audited.</span>
+                    </div>
+                </div>
+
+                <!-- 4 Top KPI Cards -->
+                <div class="admin-kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-bottom: 24px;">
+                    <div class="kpi-card card-farmers">
+                        <div class="kpi-icon">👥</div>
+                        <div class="kpi-body">
+                            <span class="kpi-label">Total Registered Accounts</span>
+                            <strong class="kpi-value" id="monTotalUsers">0</strong>
+                            <div class="kpi-sub">
+                                <span class="tag-active" id="monActiveUsers">0 Active</span>
+                                <span class="tag-suspended" id="monSuspendedUsers">0 Suspended</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="kpi-card card-farms">
+                        <div class="kpi-icon">⚡</div>
+                        <div class="kpi-body">
+                            <span class="kpi-label">Active Users (7 Days)</span>
+                            <strong class="kpi-value" id="monActiveUsers7d">0</strong>
+                            <div class="kpi-sub">
+                                <span id="monActivities24h">0 events in last 24h</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="kpi-card card-schedules">
+                        <div class="kpi-icon">📊</div>
+                        <div class="kpi-body">
+                            <span class="kpi-label">Total Logged Activities</span>
+                            <strong class="kpi-value" id="monTotalActivities">0</strong>
+                            <div class="kpi-sub">
+                                <span>Across all platform features</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="kpi-card card-weather">
+                        <div class="kpi-icon">💧</div>
+                        <div class="kpi-body">
+                            <span class="kpi-label">Total Water Planned</span>
+                            <strong class="kpi-value" id="monTotalWater">0 L</strong>
+                            <div class="kpi-sub">
+                                <span id="monCultivatedPlots">0 active plots</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Two Column Dashboard: Accounts Overview & Live Stream -->
+                <div class="accounts-monitor-grid">
+                    <!-- Column 1: Registered Accounts & Usage -->
+                    <div class="monitor-col-left">
+                        <div class="admin-table-card">
+                            <div class="card-title-bar">
+                                <h3>👨‍🌾 User Accounts Usage</h3>
+                                <span class="badge-pill" id="monAccountsBadge">0 Accounts</span>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="admin-table" id="monAccountsTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Farmer / Username</th>
+                                            <th>Location</th>
+                                            <th>Status</th>
+                                            <th>Activity History</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="monAccountsTableBody">
+                                        <!-- Dynamically populated -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Column 2: Live Activity Stream -->
+                    <div class="monitor-col-right">
+                        <div class="admin-table-card">
+                            <div class="card-title-bar">
+                                <h3>⚡ Real-Time User Action Stream</h3>
+                                <div class="stream-filter-wrapper">
+                                    <select id="monActivityTypeFilter" class="admin-filter-select-sm">
+                                        <option value="all">All Activities</option>
+                                        <option value="LOGIN">🔑 Logins & Sessions</option>
+                                        <option value="REGISTER">🌱 Registrations</option>
+                                        <option value="PREDICT_IRRIGATION">🧠 AI Predictions</option>
+                                        <option value="CREATE_SECTION">🌾 Plot Creations</option>
+                                        <option value="GENERATE_SCHEDULE">📅 Schedules</option>
+                                        <option value="WEATHER_SYNC">🌤️ Weather Syncs</option>
+                                        <option value="AI_CHAT">💬 AI Assistant</option>
+                                        <option value="VOICE_COMMAND">🎙️ Voice Actions</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="activity-stream-container" id="monActivityStreamContainer">
+                                <div class="activity-stream-list" id="monActivityStreamList">
+                                    <!-- Dynamically populated -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
         </main>
     </div>
 
@@ -640,6 +771,29 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- MODAL 5: USER ACTIVITY TIMELINE MODAL -->
+    <div id="userTimelineModal" class="custom-modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="userTimelineModalTitle">
+        <div class="modal-backdrop" id="userTimelineModalBackdrop"></div>
+        <div class="modal-dialog admin-detail-dialog user-timeline-dialog">
+            <div class="modal-header">
+                <div class="modal-title-group">
+                    <span class="modal-icon">📜</span>
+                    <div>
+                        <h3 id="userTimelineModalTitle">Farmer Activity Timeline</h3>
+                        <p class="modal-subtext" id="userTimelineFarmerSubtitle">Farmer ID: --</p>
+                    </div>
+                </div>
+                <button type="button" class="modal-close-btn" id="userTimelineModalCloseBtn">✕</button>
+            </div>
+            <div class="modal-body" id="userTimelineModalBody">
+                <!-- Dynamically populated via JS -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-close-modal" id="userTimelineModalDoneBtn">Close</button>
+            </div>
         </div>
     </div>
 

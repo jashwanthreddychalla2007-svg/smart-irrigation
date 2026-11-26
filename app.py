@@ -112,6 +112,13 @@ from src.voice_providers import (
     get_tts_audio,
     sanitize_speech_text,
 )
+from src.activity_logger import (
+    init_activity_db,
+    log_user_activity,
+    get_recent_activities,
+    get_user_timeline,
+    get_accounts_monitoring_summary,
+)
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -121,18 +128,23 @@ logger = logging.getLogger("app")
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "agrisaathi-farmer-smart-irrigation-2026-key")
+# Configure 60-day persistent session lifetime so accounts remain logged in across days
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=60)
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
-# Initialize Irrigation Service, Scheduler DB, Farm DB, Super Admin DB and Passkey DB at startup
+# Initialize Irrigation Service, Scheduler DB, Farm DB, Super Admin DB, Activity DB and Passkey DB at startup
 irrigation_service = IrrigationService.get_instance()
 init_scheduler_db()
 init_farm_db()
+init_activity_db()
 seed_default_farmtech_account()
 if os.getenv("SEED_DEMO_ACCOUNTS", "").lower() in ("1", "true"):
     seed_demo_accounts()
 init_admin_db()
 bootstrap_super_admin()
 init_passkey_db()
-logger.info(f"Loaded {len(irrigation_service.get_states())} Indian states. Seeded multi-farmer, Super Admin & WebAuthn database.")
+logger.info(f"Loaded {len(irrigation_service.get_states())} Indian states. Seeded multi-farmer, Super Admin, Activity Logger & WebAuthn database.")
 
 
 # Landing / Login page: always open Farmer Login for unauthenticated visitors
@@ -428,6 +440,15 @@ def auth_register():
             onboarding_completed=0,
         )
         session["farmer_id"] = farmer["id"]
+        session.permanent = True
+        log_user_activity(
+            user_id=farmer["id"],
+            username=farmer.get("username") or username,
+            activity_type="REGISTER",
+            action_summary=f"Created new farmer account ({farmer.get('state', 'India')})",
+            ip_address=request.remote_addr,
+            user_agent=request.user_agent.string
+        )
         return jsonify({
             "status": "success",
             "message": "Farmer account created successfully.",
@@ -465,6 +486,15 @@ def auth_login():
         }), 403
 
     session["farmer_id"] = farmer["id"]
+    session.permanent = True
+    log_user_activity(
+        user_id=farmer["id"],
+        username=farmer.get("username") or username,
+        activity_type="LOGIN",
+        action_summary=f"Signed in with password ({farmer.get('state', 'India')})",
+        ip_address=request.remote_addr,
+        user_agent=request.user_agent.string
+    )
     redirect_url = "/dashboard" if farmer.get("onboarding_completed") else "/onboarding"
     return jsonify({"status": "success", "farmer": farmer, "redirect": redirect_url}), 200
 
@@ -487,12 +517,32 @@ def auth_demo_login():
                 "suspended": True,
             }), 403
         session["farmer_id"] = farmer["id"]
+        session.permanent = True
+        log_user_activity(
+            user_id=farmer["id"],
+            username=farmer.get("username", "demo"),
+            activity_type="LOGIN",
+            action_summary="Logged in via demo account switch",
+            ip_address=request.remote_addr,
+            user_agent=request.user_agent.string
+        )
         return jsonify({"status": "success", "farmer": farmer, "demo_type": demo_type, "redirect": "/dashboard"}), 200
     return jsonify({"error": "Demo account could not be initialized.", "status": "error"}), 500
 
 
 @app.route("/api/auth/logout", methods=["POST"])
 def auth_logout():
+    fid = session.get("farmer_id")
+    if fid:
+        f = get_farmer_by_id(fid)
+        if f:
+            log_user_activity(
+                user_id=fid,
+                username=f.get("username", "farmer"),
+                activity_type="LOGOUT",
+                action_summary="Signed out from session",
+                ip_address=request.remote_addr
+            )
     session.clear()
     return jsonify({"status": "success", "message": "Logged out successfully.", "redirect": "/"}), 200
 
@@ -678,6 +728,17 @@ def voice_command_endpoint():
             }
 
         logger.info(f"Voice command executed: farmer={farmer_id}, action={result.get('action')}, lang={language}")
+        if farmer_id:
+            farmer = get_farmer_by_id(farmer_id)
+            action_name = result.get("action") or "voice_query"
+            log_user_activity(
+                user_id=farmer_id,
+                username=farmer.get("username", "farmer") if farmer else "farmer",
+                activity_type="VOICE_COMMAND",
+                action_summary=f"Voice Assistant: {action_name} ({language.upper()})",
+                details={"action": action_name, "language": language},
+                ip_address=request.remote_addr,
+            )
         return jsonify(result), 200
     except Exception as e:
         logger.error(f"Voice command dispatcher error: {e}")
@@ -1138,6 +1199,15 @@ def passkey_login_verify():
     session.pop("webauthn_auth_challenge", None)
     farmer = res["farmer"]
     session["farmer_id"] = farmer["id"]
+    session.permanent = True
+    log_user_activity(
+        user_id=farmer["id"],
+        username=farmer.get("username", "farmer"),
+        activity_type="LOGIN",
+        action_summary=f"Signed in via Face Lock / Biometric ({res.get('device_name', 'Device')})",
+        ip_address=request.remote_addr,
+        user_agent=request.user_agent.string
+    )
     redirect_target = "/dashboard" if farmer.get("onboarding_completed") else "/onboarding"
 
     return jsonify({
@@ -1240,6 +1310,17 @@ def weather_live():
 
     force_refresh = request.args.get("refresh", "").lower() in ("1", "true")
     w = get_live_weather(lat, lon, force_refresh=force_refresh)
+    fid = get_authenticated_farmer_id()
+    if fid and force_refresh:
+        farmer = get_farmer_by_id(fid)
+        log_user_activity(
+            user_id=fid,
+            username=farmer.get("username", "farmer") if farmer else "farmer",
+            activity_type="WEATHER_SYNC",
+            action_summary=f"Synced live Open-Meteo field weather ({lat:.2f}, {lon:.2f})",
+            details={"lat": lat, "lon": lon, "temp_c": w.get("current", {}).get("temperature_c")},
+            ip_address=request.remote_addr,
+        )
     return jsonify(w), 200
 
 
@@ -1315,6 +1396,16 @@ def add_farm_section(farm_id):
             forecast_24h=forecast_24h,
         )
         summary = get_land_summary(farm_id, farmer_id)
+        farmer = get_farmer_by_id(farmer_id)
+        plot_desc = f"Empty land ({sec.get('area_acres')} ac)" if is_empty else f"{sec.get('crop')} ({sec.get('area_acres')} ac)"
+        log_user_activity(
+            user_id=farmer_id,
+            username=farmer.get("username", "farmer") if farmer else "farmer",
+            activity_type="CREATE_SECTION",
+            action_summary=f"Added new plot: '{sec.get('name')}' - {plot_desc}",
+            details={"section_id": sec.get("id"), "crop": sec.get("crop"), "area": sec.get("area_acres")},
+            ip_address=request.remote_addr,
+        )
         return jsonify({"status": "success", "section": sec, "summary": summary}), 201
     except ValueError as e:
         return jsonify({"error": str(e), "status": "error"}), 400
@@ -1344,6 +1435,15 @@ def update_section_details(section_id):
     try:
         sec = update_section(section_id, farmer_id, data)
         summary = get_land_summary(sec["farm_id"], farmer_id)
+        farmer = get_farmer_by_id(farmer_id)
+        log_user_activity(
+            user_id=farmer_id,
+            username=farmer.get("username", "farmer") if farmer else "farmer",
+            activity_type="UPDATE_SECTION",
+            action_summary=f"Updated plot '{sec.get('name')}' ({sec.get('crop', 'Land')})",
+            details={"section_id": section_id, "crop": sec.get("crop"), "area": sec.get("area_acres")},
+            ip_address=request.remote_addr,
+        )
         return jsonify({"status": "success", "section": sec, "summary": summary}), 200
     except ValueError as e:
         return jsonify({"error": str(e), "status": "error"}), 400
@@ -1360,7 +1460,18 @@ def delete_section_endpoint(section_id):
     if not sec:
         return jsonify({"error": "Section not found."}), 404
     farm_id = sec["farm_id"]
+    sec_name = sec.get("name", "Plot")
+    crop_name = sec.get("crop", "Land")
     delete_section(section_id, farmer_id)
+    farmer = get_farmer_by_id(farmer_id)
+    log_user_activity(
+        user_id=farmer_id,
+        username=farmer.get("username", "farmer") if farmer else "farmer",
+        activity_type="DELETE_SECTION",
+        action_summary=f"Deleted plot '{sec_name}' ({crop_name})",
+        details={"section_id": section_id, "crop": crop_name},
+        ip_address=request.remote_addr,
+    )
     summary = get_land_summary(farm_id, farmer_id)
     return jsonify({"status": "success", "summary": summary}), 200
 
@@ -1376,6 +1487,18 @@ def predict_section_endpoint(section_id):
     data = request.get_json(silent=True) or {}
     try:
         pred = predict_section_irrigation(section_id, farmer_id, override_data=data)
+        farmer = get_farmer_by_id(farmer_id)
+        crop_name = pred.get("crop", "Crop")
+        water_l = pred.get("water_requirement_liters", 0.0)
+        req_status = "Irrigation Needed" if pred.get("irrigation_required") else "Soil Adequate"
+        log_user_activity(
+            user_id=farmer_id,
+            username=farmer.get("username", "farmer") if farmer else "farmer",
+            activity_type="PREDICT_IRRIGATION",
+            action_summary=f"Calculated irrigation for {crop_name} -> {req_status} ({water_l:,.0f} L)",
+            details={"crop": crop_name, "irrigation_required": pred.get("irrigation_required"), "liters": water_l},
+            ip_address=request.remote_addr,
+        )
         return jsonify(pred), 200
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
@@ -1401,6 +1524,15 @@ def schedule_section_endpoint(section_id):
             start_date=start_date,
             planning_period_days=planning_period,
             forecast_24h=forecast_24h,
+        )
+        farmer = get_farmer_by_id(farmer_id)
+        log_user_activity(
+            user_id=farmer_id,
+            username=farmer.get("username", "farmer") if farmer else "farmer",
+            activity_type="GENERATE_SCHEDULE",
+            action_summary=f"Generated {len(schedules)} irrigation cycle(s) over {planning_period} days",
+            details={"cycles": len(schedules), "period_days": planning_period},
+            ip_address=request.remote_addr,
         )
         return jsonify({"status": "success", "schedules": schedules, "count": len(schedules)}), 200
     except Exception as e:
@@ -1437,6 +1569,15 @@ def update_section_schedule_status_endpoint(section_id, schedule_id):
     if not result.get("success"):
         return jsonify(result), 400
 
+    farmer = get_farmer_by_id(farmer_id)
+    act_type = "COMPLETE_SCHEDULE" if new_status == "Completed" else "SKIP_SCHEDULE"
+    log_user_activity(
+        user_id=farmer_id,
+        username=farmer.get("username", "farmer") if farmer else "farmer",
+        activity_type=act_type,
+        action_summary=f"Marked schedule as {new_status}" + (f" (Reason: {skip_reason})" if skip_reason else ""),
+        ip_address=request.remote_addr,
+    )
     schedules = get_section_schedules(section_id, farmer_id)
     result["schedules"] = schedules
     return jsonify(result), 200
@@ -1533,6 +1674,16 @@ def chat():
             language=language,
             history=validated_history,
         )
+        if farmer_id:
+            farmer = get_farmer_by_id(farmer_id)
+            log_user_activity(
+                user_id=farmer_id,
+                username=farmer.get("username", "farmer") if farmer else "farmer",
+                activity_type="AI_CHAT",
+                action_summary=f"Consulted AgriSaathi AI ({language.upper() if language != 'auto' else 'AI Query'})",
+                details={"language": language, "query_length": len(message), "model": result.get("model", "gemini")},
+                ip_address=request.remote_addr,
+            )
         return jsonify({
             "reply": result["reply"],
             "model": result.get("model", ""),
@@ -1880,6 +2031,39 @@ def admin_audit_logs():
     action = request.args.get("action")
     logs = get_admin_audit_logs(limit=limit, action=action)
     return jsonify(logs), 200
+
+
+# ========================================================
+# Phase 8: Admin Accounts & Live Activity Monitor
+# ========================================================
+@app.route("/api/admin/accounts/summary", methods=["GET"])
+@admin_required
+def admin_accounts_summary():
+    """Aggregated statistics on user accounts, logins, and platform feature usage."""
+    summary = get_accounts_monitoring_summary()
+    return jsonify({"status": "success", "summary": summary}), 200
+
+
+@app.route("/api/admin/accounts/activities", methods=["GET"])
+@admin_required
+def admin_accounts_activities():
+    """Live stream of sanitized user activities and operational events."""
+    limit = int(request.args.get("limit", 100))
+    act_type = request.args.get("type")
+    user_id = request.args.get("user_id")
+    activities = get_recent_activities(limit=limit, activity_type=act_type, user_id=user_id)
+    return jsonify({"status": "success", "activities": activities, "count": len(activities)}), 200
+
+
+@app.route("/api/admin/accounts/<user_id>/timeline", methods=["GET"])
+@admin_required
+def admin_account_user_timeline(user_id):
+    """Detailed chronological activity history and usage metrics for a specific user."""
+    limit = int(request.args.get("limit", 150))
+    res = get_user_timeline(user_id=user_id, limit=limit)
+    if not res.get("success"):
+        return jsonify({"status": "error", "message": res.get("error", "User not found")}), 404
+    return jsonify(res), 200
 
 
 # Application Entry Point
